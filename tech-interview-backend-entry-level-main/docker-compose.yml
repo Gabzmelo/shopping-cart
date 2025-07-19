@@ -1,33 +1,48 @@
-version: '3'
-
+version: '3.9'
 services:
-    db:
-        image: postgres:16-alpine
-        environment:
-          - POSTGRES_USER=postgres
-          - POSTGRES_PASSWORD=password
-        ports:
-            - '5432:5432'
-        volumes:
-            - postgres13:/var/lib/postgresql/data
-    redis:
-        image: redis:7.0.15-alpine
-        ports:
-        - '6379:6379'
-        volumes:
-        - redis_data:/data  
-    web:
-        ## TODO
-    test:
-        build: .
-        command: bundle exec rspec
-        volumes:
-            - .:/rails
-        depends_on:
-            - db
-            - redis 
-        environment:
-            - DATABASE_URL: postgresql://postgres:password@db:5432/myapp_test
-            - REDIS_URL: redis://redis:6379/0
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: rd_cart
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7.0.15
+    ports:
+      - "6379:6379"
+
+  web:
+    build: .
+    command: bash -c "bundle install && bundle exec rails db:migrate && bundle exec rails server -b 0.0.0.0"
+    volumes:
+      - .:/app
+    ports:
+      - "3000:3000"
+    depends_on:
+      - db
+      - redis
+    environment:
+      RAILS_ENV: development
+      DATABASE_URL: postgres://postgres:postgres@db:5432/rd_cart
+      REDIS_URL: redis://redis:6379/1
+
+  sidekiq:
+    build: .
+    command: bundle exec sidekiq
+    depends_on:
+      - db
+      - redis
+    volumes:
+      - .:/app
+    environment:
+      RAILS_ENV: development
+      DATABASE_URL: postgres://postgres:postgres@db:5432/rd_cart
+      REDIS_URL: redis://redis:6379/1
+
 volumes:
-    postgres13:
+  db_data:
