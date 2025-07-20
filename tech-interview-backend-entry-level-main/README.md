@@ -1,218 +1,292 @@
-# Desafio técnico e-commerce
 
-## Nossas expectativas
+# Desafio técnico e-commerce - Carrinho de Compras
 
-A equipe de engenharia da RD Station tem alguns princípios nos quais baseamos nosso trabalho diário. Um deles é: projete seu código para ser mais fácil de entender, não mais fácil de escrever.
+  
 
-Portanto, para nós, é mais importante um código de fácil leitura do que um que utilize recursos complexos e/ou desnecessários.
+Este projeto implementa uma API RESTful para gerenciamento de carrinho de compras, conforme o Desafio Técnico proposto pela RD Station para vagas de Pessoa Desenvolvedora Júnior/Pleno - Engenharia 2025.
 
-O que gostaríamos de ver:
+  
 
-- O código deve ser fácil de ler. Clean Code pode te ajudar.
-- Notas gerais e informações sobre a versão da linguagem e outras informações importantes para executar seu código.
-- Código que se preocupa com a performance (complexidade de algoritmo).
-- O seu código deve cobrir todos os casos de uso presentes no README, mesmo que não haja um teste implementado para tal.
-- A adição de novos testes é sempre bem-vinda.
-- Você deve enviar para nós o link do repositório público com a aplicação desenvolvida (GitHub, BitBucket, etc.).
+## Princípios de Design e Escolhas Técnicas
 
-## O Desafio - Carrinho de compras
-O desafio consiste em uma API para gerenciamento do um carrinho de compras de e-commerce.
+  
 
-Você deve desenvolver utilizando a linguagem Ruby e framework Rails, uma API Rest que terá 3 endpoins que deverão implementar as seguintes funcionalidades:
+A equipe de engenharia da RD Station valoriza um código que seja **fácil de entender, não apenas fácil de escrever**. Seguindo esse princípio, as seguintes escolhas de design foram feitas:
 
-### 1. Registrar um produto no carrinho
-Criar um endpoint para inserção de produtos no carrinho.
+  
 
-Se não existir um carrinho para a sessão, criar o carrinho e salvar o ID do carrinho na sessão.
+*  **Clean Code e Legibilidade**: Priorizei a clareza e a legibilidade do código. Métodos e classes foram nomeados de forma a expressar sua intenção. Lógicas complexas foram segmentadas em métodos menores ou encapsuladas em modelos quando apropriado.
 
-Adicionar o produto no carrinho e devolver o payload com a lista de produtos do carrinho atual.
+*  **Performance (Complexidade de Algoritmo)**: Operações de busca e atualização em coleções grandes (como itens em um carrinho, embora no escopo do desafio não seja tão grande) foram consideradas para evitar iterações desnecessárias. O uso adequado de índices de banco de dados (`foreign_key: true` em migrações) fundamental para a performance em operações de lookup.
 
+*  **Modelagem de Dados**:
 
-ROTA: `/cart`
-Payload:
-```js
-{
-  "product_id": 345, // id do produto sendo adicionado
-  "quantity": 2, // quantidade de produto a ser adicionado
-}
-```
+* Criação do modelo `CartItem`: Em vez de armazenar produtos diretamente no `Cart` (e.g., via um array JSON), optei por uma tabela `cart_items` para modelar a relação N:N entre `Cart` e `Product`. Esta é uma abordagem padrão em Rails (`has_many through`) que oferece maior flexibilidade, integridade de dados e capacidade de expansão. Permite adicionar metadados específicos do item no carrinho (como `quantity` e `unit_price`).
 
-Response
-```js
-{
-  "id": 789, // id do carrinho
-  "products": [
-    {
-      "id": 645,
-      "name": "Nome do produto",
-      "quantity": 2,
-      "unit_price": 1.99, // valor unitário do produto
-      "total_price": 3.98, // valor total do produto
-    },
-    {
-      "id": 646,
-      "name": "Nome do produto 2",
-      "quantity": 2,
-      "unit_price": 1.99,
-      "total_price": 3.98,
-    },
-  ],
-  "total_price": 7.96 // valor total no carrinho
-}
-```
+* Armazenamento de `unit_price` no `CartItem`: O preço unitário de um produto no carrinho é salvo no `CartItem` no momento da adição/atualização. Isso garante que, se o preço do `Product` mudar no futuro, o valor no carrinho não seja alterado retroativamente, preservando a consistência da transação.
 
-### 2. Listar itens do carrinho atual
-Criar um endpoint para listar os produtos no carrinho atual.
+* Campos `abandoned_at` e `last_interaction_at` no `Cart`: Essenciais para o gerenciamento de carrinhos abandonados, permitindo um controle claro do status e tempo de inatividade.
 
-ROTA: `/cart`
+*  **Gerenciamento de Sessão**: O `cart_id` é armazenado na sessão do usuário (`session[:cart_id]`). Esta é uma maneira simples e eficaz de associar um carrinho a uma sessão HTTP sem a necessidade de autenticação de usuário completa, atendendo ao requisito de "se não existir um carrinho para a sessão, criar o carrinho e salvar o ID do carrinho na sessão".
 
-Response:
-```js
-{
-  "id": 789, // id do carrinho
-  "products": [
-    {
-      "id": 645,
-      "name": "Nome do produto",
-      "quantity": 2,
-      "unit_price": 1.99, // valor unitário do produto
-      "total_price": 3.98, // valor total do produto
-    },
-    {
-      "id": 646,
-      "name": "Nome do produto 2",
-      "quantity": 2,
-      "unit_price": 1.99,
-      "total_price": 3.98,
-    },
-  ],
-  "total_price": 7.96 // valor total no carrinho
-}
-```
+*  **Tratamento de Erros**: Foram adicionados validações e tratamentos de erro no controller e nos modelos (e.g., quantidade negativa, produto não encontrado). As respostas da API retornam status HTTP apropriados (`404 Not Found`, `422 Unprocessable Entity`) e mensagens claras para o consumidor da API.
 
-### 3. Alterar a quantidade de produtos no carrinho 
-Um carrinho pode ter _N_ produtos, se o produto já existir no carrinho, apenas a quantidade dele deve ser alterada
+*  **Background Jobs (Sidekiq)**: O gerenciamento de carrinhos abandonados é feito através de um Sidekiq Job (`MarkCartAsAbandonedJob`). Esta é a abordagem padrão para tarefas de tempo prolongado ou agendadas no Rails, evitando bloquear o thread principal da aplicação web e garantindo escalabilidade. O agendamento é feito via `sidekiq-scheduler`, um recurso robusto para agendar jobs de forma declarativa.
 
-ROTA: `/cart/add_item`
+*  **Testes (RSpec e FactoryBot)**:
 
-Payload
-```json
-{
-  "product_id": 1230,
-  "quantity": 1
-}
-```
-Response:
-```json
-{
-  "id": 1,
-  "products": [
-    {
-      "id": 1230,
-      "name": "Nome do produto X",
-      "quantity": 2, // considerando que esse produto já estava no carrinho
-      "unit_price": 7.00, 
-      "total_price": 14.00, 
-    },
-    {
-      "id": 01020,
-      "name": "Nome do produto Y",
-      "quantity": 1,
-      "unit_price": 9.90, 
-      "total_price": 9.90, 
-    },
-  ],
-  "total_price": 23.9
-}
-```
+*  **Cobertura**: Testes foram implementados para os novos endpoints do `CartsController`, bem como para a lógica de negócio dos modelos `Cart` e `CartItem` e o `MarkCartAsAbandonedJob`.
 
-### 3. Remover um produto do carrinho 
+*  **Factories**: Utilização de `FactoryBot` para criar objetos de teste de forma flexível e legível, reduzindo a duplicação e facilitando a manutenção dos testes.
 
-Criar um endpoint para excluir um produto do do carrinho. 
+*  **Dockerização**: Um arquivo `docker-compose.yml` foi criado para orquestrar os serviços da aplicação (Rails, PostgreSQL, Redis e Sidekiq). Isso facilita o setup do ambiente de desenvolvimento/produção, garantindo consistência e isolamento.
 
-ROTA: `/cart/:product_id`
+  
 
+## Dependências
 
-#### Detalhes adicionais:
+  
 
-- Verifique se o produto existe no carrinho antes de tentar removê-lo.
-- Se o produto não estiver no carrinho, retorne uma mensagem de erro apropriada.
-- Após remover o produto, retorne o payload com a lista atualizada de produtos no carrinho.
-- Certifique-se de que o endpoint lida corretamente com casos em que o carrinho está vazio após a remoção do produto.
+*  **Ruby**: 3.3.1
 
-### 5. Excluir carrinhos abandonados
-Um carrinho é considerado abandonado quando estiver sem interação (adição ou remoção de produtos) há mais de 3 horas.
+*  **Rails**: 7.1.3.2
 
-- Quando este cenário ocorrer, o carrinho deve ser marcado como abandonado.
-- Se o carrinho estiver abandonado há mais de 7 dias, remover o carrinho.
-- Utilize um Job para gerenciar (marcar como abandonado e remover) carrinhos sem interação.
-- Configure a aplicação para executar este Job nos períodos especificados acima.
+*  **PostgreSQL**: 16
 
-### Detalhes adicionais:
-- O Job deve ser executado regularmente para verificar e marcar carrinhos como abandonados após 3 horas de inatividade.
-- O Job também deve verificar periodicamente e excluir carrinhos que foram marcados como abandonados por mais de 7 dias.
+*  **Redis**: 7.0.15
 
-### Como resolver
+*  **Sidekiq**: ~> 7.2.4
 
-#### Implementação
-Você deve usar como base o código disponível nesse repositório e expandi-lo para que atenda as funcionalidade descritas acima.
+*  **Sidekiq-Scheduler**: ~> 5.0.3
 
-Há trechos parcialmente implementados e também sugestões de locais para algumas das funcionalidades sinalizados com um `# TODO`. Você pode segui-los ou fazer da maneira que julgar ser a melhor a ser feita, desde que atenda os contratos de API e funcionalidades descritas.
+  
 
-#### Testes
-Existem testes pendentes, eles estão marcados como <span style="color:green;">Pending</span>, e devem ser implementados para garantir a cobertura dos trechos de código implementados por você.
-Alguns testes já estão passando e outros estão com erro. Com a sua implementação os testes com erro devem passar a funcionar. 
-A adição de novos testes é sempre bem-vinda, mas sem alterar os já implementados.
+As dependências são gerenciadas pelo `Bundler`.
 
+  
 
-### O que esperamos
-- Implementação dos testes faltantes e de novos testes para os métodos/serviços/entidades criados
-- Construção das 4 rotas solicitadas
-- Implementação de um job para controle dos carrinhos abandonados
+## Como Executar o Projeto
 
+  
 
-### Itens adicionais / Legais de ter
-- Utilização de factory na construção dos testes
-- Desenvolvimento do docker-compose / dockerização da app
+### Pré-requisitos
 
-A aplicação já possui um Dockerfile, que define como a aplicação deve ser configurada dentro de um contêiner Docker. No entanto, para completar a dockerização da aplicação, é necessário criar um arquivo `docker-compose.yml`. O arquivo irá definir como os vários serviços da aplicação (por exemplo, aplicação web, banco de dados, etc.) interagem e se comunicam.
+  
 
-- Adicione tratamento de erros para situações excepcionais válidas, por exemplo: garantir que um produto não possa ter quantidade negativa. 
+Certifique-se de ter o `Docker` e o `Docker Compose` instalados em sua máquina.
 
-- Se desejar você pode adicionar a configuração faltante no arquivo `docker-compose.yml` e garantir que a aplicação rode de forma correta utilizando Docker. 
+  
 
-## Informações técnicas
+### Executando com Docker Compose (Recomendado)
 
-### Dependências
-- ruby 3.3.1
-- rails 7.1.3.2
-- postgres 16
-- redis 7.0.15
+  
 
-### Como executar o projeto
+1.  **Construir as imagens Docker**:
 
-## Executando a app sem o docker
-Dado que todas as as ferramentas estão instaladas e configuradas:
-
-Instalar as dependências do:
 ```bash
+
+docker-compose build
+
+```
+
+2.  **Configurar o Banco de Dados**:
+
+Este comando cria o banco de dados, executa as migrações e popula com os dados iniciais (`db/seeds.rb`).
+
+```bash
+
+docker-compose run web bundle exec rails db:create db:migrate db:seed
+
+```
+
+(Você pode omitir `db:seed` se não quiser dados iniciais).
+
+3.  **Iniciar os serviços**:
+
+```bash
+
+docker-compose up
+
+```
+
+Isso iniciará o servidor Rails (`web`), o banco de dados (`db`), o Redis (`redis`) e o Sidekiq (`sidekiq`).
+
+  
+
+A API estará disponível em `http://localhost:3000`. O painel do Sidekiq estará em `http://localhost:3000/sidekiq`.
+
+  
+
+### Executando sem Docker (Ambiente local)
+
+  
+
+Dado que todas as ferramentas (Ruby, Rails, PostgreSQL, Redis) estão instaladas e configuradas em seu ambiente:
+
+  
+
+1.  **Instalar dependências Ruby**:
+
+```bash
+
 bundle install
+
 ```
 
-Executar o sidekiq:
+2.  **Configurar o Banco de Dados**:
+
 ```bash
+
+rails db:create db:migrate db:seed
+
+```
+
+3.  **Executar o Sidekiq**:
+
+```bash
+
 bundle exec sidekiq
+
 ```
 
-Executar projeto:
+4.  **Executar o Projeto (Servidor Rails)**:
+
 ```bash
+
 bundle exec rails server
+
 ```
 
-Executar os testes:
+A API estará disponível em `http://localhost:3000`.
+
+  
+
+## Endpoints da API
+
+  
+
+Todos os payloads de resposta seguiram o formato do desafio.
+
+  
+
+### 1. Registrar um produto no carrinho (`POST /cart`)
+
+  
+
+*  **Descrição**: Adiciona um produto ao carrinho ou, se já existir, **define** a quantidade do produto no carrinho para o valor fornecido.
+
+*  **Rota**: `POST /cart`
+
+*  **Payload de Requisição**:
+
+```json
+
+{
+
+	"product_id": 345,
+	"quantity": 2
+
+}
+
+```
+
+*  **Respostas**:
+
+*  `200 OK`: Produto adicionado/quantidade atualizada com sucesso. Retorna o carrinho atualizado.
+
+*  `404 Not Found`: `{"error": "Produto não existe"}` se o `product_id` não existir.
+
+*  `422 Unprocessable Entity`: `{"error": "Quantity must be greater than zero"}` se a quantidade for inválida.
+
+  
+
+### 2. Listar itens do carrinho atual (`GET /cart`)
+
+  
+
+*  **Descrição**: Lista todos os produtos no carrinho atual do usuário.
+
+*  **Rota**: `GET /cart`
+
+*  **Respostas**:
+
+*  `200 OK`: Retorna o carrinho atualizado, incluindo a lista de produtos e o total.
+
+  
+
+### 3. Alterar (Incrementar) a quantidade de produtos no carrinho (`POST /cart/add_item`)
+
+  
+
+*  **Descrição**: **Incrementa** a quantidade de um produto existente no carrinho pelo valor fornecido. Se o produto não estiver no carrinho, ele é adicionado com a quantidade especificada.
+
+*  **Rota**: `POST /cart/add_item`
+
+*  **Payload de Requisição**:
+
+```json
+
+{
+
+	"product_id": 1230,
+	"quantity": 1
+
+}
+
+```
+
+*  **Respostas**:
+
+*  `200 OK`: Quantidade do produto incrementada/adicionada com sucesso. Retorna o carrinho atualizado.
+
+*  `404 Not Found`: `{"error": "Product not found"}` se o `product_id` não existir.
+
+*  `422 Unprocessable Entity`: `{"error": "Quantity to add must be greater than zero"}` se a quantidade a ser adicionada for inválida.
+
+  
+
+### 4. Remover um produto do carrinho (`DELETE /cart/:product_id`)
+
+  
+
+*  **Descrição**: Remove um produto específico do carrinho.
+
+*  **Rota**: `DELETE /cart/:product_id` (onde `:product_id` é o ID do produto a ser removido)
+
+*  **Respostas**:
+
+*  `200 OK`: Produto removido com sucesso. Retorna o carrinho atualizado.
+
+*  `404 Not Found`: `{"error": "Product not found in cart"}` se o produto não estiver no carrinho.
+
+  
+
+## Testes
+
+  
+
+Para executar os testes:
+
+  
+
 ```bash
-bundle exec rspec
+bundle  exec  rspec
 ```
 
-### Como enviar seu projeto
-Salve seu código em um versionador de código (GitHub, GitLab, Bitbucket) e nos envie o link publico. Se achar necessário, informe no README as instruções para execução ou qualquer outra informação relevante para correção/entendimento da sua solução.
+Se  estiver  usando  Docker:
+
+````Bash
+docker-compose  run  test  bundle  exec  rspec
+````
+
+Os  testes  abrangem:
+
+spec/models/product_spec.rb:  Validações  básicas  do  modelo  Product.
+
+spec/models/cart_spec.rb:  Validações,  lógica  de  mark_as_abandoned,  remove_old_abandoned_carts  e  calculate_total_price  do  modelo  Cart.
+
+spec/requests/products_spec.rb:  Testes  para  os  endpoints  CRUD  de  produtos.
+
+spec/requests/carts_spec.rb:  Testes  completos  para  os  endpoints  POST  /cart,  GET  /cart,  POST  /cart/add_item  e  DELETE  /cart/:product_id,  incluindo  cenários  de  sucesso,  falha  e  validação  de  payloads.
+
+spec/sidekiq/mark_cart_as_abandoned_job_spec.rb:  Testa  a  execução  e  o  comportamento  do  job  de  carrinhos  abandonados.
