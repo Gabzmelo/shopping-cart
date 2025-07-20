@@ -1,18 +1,22 @@
 class MarkCartAsAbandonedJob
   include Sidekiq::Job
 
-    queue_as :default
+  # Realiza a verificação e o gerenciamento dos carrinhos abandonados.
+  def perform
+    Rails.logger.info "Starting MarkCartAsAbandonedJob..."
 
-    def perform
-      # Marca carrinhos inativos há mais de 3h como abandonados
-      Cart.where(abandoned: false)
-          .where('updated_at < ?', 3.hours.ago)
-          .update_all(abandoned: true)
-
-      # Remove carrinhos abandonados há mais de 7 dias
-      Cart.where(abandoned: true)
-          .where('updated_at < ?', 7.days.ago)
-          .destroy_all
+    # Marca carrinhos como abandonados sem interação há mais de 3 horas
+    carts_to_mark_abandoned = Cart.where(abandoned_at: nil)
+                                  .where('last_interaction_at < ?', 3.hours.ago)
+    carts_to_mark_abandoned.each do |cart|
+      cart.mark_as_abandoned
+      Rails.logger.info "Cart #{cart.id} marked as abandoned."
     end
+
+    # Remove carrinhos abandonados há mais de 7 dias
+    removed_carts_count = Cart.remove_old_abandoned_carts.count
+    Rails.logger.info "Removed #{removed_carts_count} old abandoned carts."
+
+    Rails.logger.info "MarkCartAsAbandonedJob finished."
   end
 end

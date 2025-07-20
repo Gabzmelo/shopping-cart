@@ -1,78 +1,105 @@
 class CartsController < ApplicationController
-  before_action :load_cart_manager
-
-  # GET /cart
-  def show
-    render json: cart_response(@cart_manager.cart)
-  end
+  before_action :set_cart
 
   # POST /cart
-  def create
-    product_id = params[:product_id]
+  # Adiciona um produto ao carrinho ou define a quantidade se ele já existir.
+  def add_product
+    product = Product.find_by(id: params[:product_id])
+    if product.nil?
+      return render json: { error: "Product not found" }, status: :not_found
+    end
+
     quantity = params[:quantity].to_i
-
     if quantity <= 0
-      return render json: { error: "Quantidade inválida" }, status: :unprocessable_entity
+      return render json: { error: "Quantity must be greater than zero" }, status: :unprocessable_entity
     end
 
-    begin
-      @cart = @cart_manager.add_product(product_id, quantity)
-      render json: cart_response(@cart)
-    rescue ActiveRecord::RecordInvalid => e
-      render json: { error: e.message }, status: :unprocessable_entity
+    cart_item = @cart.cart_items.find_by(product_id: product.id)
+
+    if cart_item
+      # Se o item já existe, atualiza a quantidade para o valor informado.
+      cart_item.update(quantity: quantity)
+    else
+      # Se não existe, cria um novo item.
+      @cart.cart_items.create(product: product, quantity: quantity)
     end
+
+    render json: formatted_cart_response, status: :ok
+  rescue ActiveRecord::RecordInvalid => e
+    render json: { errors: e.record.errors.full_messages }, status: :unprocessable_entity
+  end
+
+  # GET /cart
+  # Lista os itens do carrinho atual.
+  def show
+    render json: formatted_cart_response, status: :ok
   end
 
   # POST /cart/add_item
-  def add_item
-    product_id = params[:product_id]
-    quantity = params[:quantity].to_i
+  # Incrementa a quantidade de um produto no carrinho, ou o adiciona se não existir.
+  def increment_item_quantity
+    product = Product.find_by(id: params[:product_id])
+    if product.nil?
+      return render json: { error: "Produto não encontrado" }, status: :not_found
+    end
 
-    if quantity <= 0
+    quantity_to_add = params[:quantity].to_i
+    if quantity_to_add <= 0
       return render json: { error: "Quantidade inválida" }, status: :unprocessable_entity
     end
 
-    begin
-      @cart = @cart_manager.update_quantity(product_id, quantity)
-      render json: cart_response(@cart)
-    rescue ActiveRecord::RecordNotFound
-      render json: { error: "Produto não encontrado no carrinho" }, status: :not_found
-    rescue ActiveRecord::RecordInvalid => e
-      render json: { error: e.message }, status: :unprocessable_entity
+    cart_item = @cart.cart_items.find_by(product_id: product.id)
+
+    if cart_item
+      cart_item.increment!(:quantity, quantity_to_add) # Incrementa a quantidade
+    else
+      @cart.cart_items.create(product: product, quantity: quantity_to_add)
     end
+
+    render json: formatted_cart_response, status: :ok
+  rescue ActiveRecord::RecordInvalid => e
+    render json: { errors: e.record.errors.full_messages }, status: :unprocessable_entity
   end
 
   # DELETE /cart/:product_id
-  def destroy
+  # Remove um produto do carrinho.
+  def remove_product
     product_id = params[:product_id]
+    cart_item = @cart.cart_items.find_by(product_id: product_id)
 
-    begin
-      @cart = @cart_manager.remove_product(product_id)
-      render json: cart_response(@cart)
-    rescue ActiveRecord::RecordNotFound
+    if cart_item
+      cart_item.destroy
+      render json: formatted_cart_response, status: :ok
+    else
       render json: { error: "Produto não encontrado no carrinho" }, status: :not_found
     end
   end
 
   private
 
-  def load_cart_manager
-    @cart_manager = CartManager.new(session)
+  def set_cart
+    cart_id = session[:cart_id]
+    @cart = Cart.find_by(id: cart_id)
+
+    if @cart.nil?
+      @cart = Cart.create(total_price: 0)
+      session[:cart_id] = @cart.id
+    end
   end
 
-  def cart_response(cart)
+  def formatted_cart_response
     {
-      id: cart.id,
-      products: cart.cart_items.includes(:product).map do |item|
+      id: @cart.id,
+      products: @cart.cart_items.map do |item|
         {
           id: item.product.id,
           name: item.product.name,
           quantity: item.quantity,
-          unit_price: item.product.unit_price,
-          total_price: item.total_price
+          unit_price: item.unit_price.to_f,
+          total_price: item.total_price.to_f
         }
       end,
-      total_price: cart.total_price
+      total_price: @cart.total_price.to_f
     }
   end
 end
