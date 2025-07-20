@@ -9,13 +9,11 @@ WORKDIR /rails
 
 # Set production environment
 ENV RAILS_ENV="development" \
-    BUNDLE_DEPLOYMENT="1" \
-    BUNDLE_PATH="/usr/local/bundle" \
-    BUNDLE_WITHOUT="development"
-
+    BUNDLE_DEPLOYMENT="0" \
+    BUNDLE_PATH="/usr/local/bundle"
 
 # Throw-away build stage to reduce size of final image
-FROM base as build
+FROM ruby:3.3.1-slim as base
 
 # Install packages needed to build gems
 RUN apt-get update -qq && \
@@ -23,6 +21,7 @@ RUN apt-get update -qq && \
 
 # Install application gems
 COPY Gemfile Gemfile.lock ./
+RUN bundle config build.pg --verbose
 RUN bundle install && \
     rm -rf ~/.bundle/ "${BUNDLE_PATH}"/ruby/*/cache "${BUNDLE_PATH}"/ruby/*/bundler/gems/*/.git && \
     bundle exec bootsnap precompile --gemfile
@@ -48,7 +47,7 @@ COPY --from=build /rails /rails
 
 # Run and own only the runtime files as a non-root user for security
 RUN useradd rails --create-home --shell /bin/bash && \
-    chown -R rails:rails db log storage tmp
+    chown -R rails:rails db log storage tmp /usr/local/bundle
 USER rails:rails
 
 # Entrypoint prepares the database.
