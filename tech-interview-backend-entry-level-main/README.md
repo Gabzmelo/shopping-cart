@@ -41,23 +41,33 @@ A equipe de engenharia da RD Station valoriza um código que seja **fácil de en
 
 *  **Dockerização**: Um arquivo `docker-compose.yml` foi criado para orquestrar os serviços da aplicação (Rails, PostgreSQL, Redis e Sidekiq). Isso facilita o setup do ambiente de desenvolvimento/produção, garantindo consistência e isolamento.
 
-  
+ ## ✅ Funcionalidades Implementadas
+
+- Adição de produtos ao carrinho (`POST /cart`)
+- Listagem dos itens do carrinho (`GET /cart`)
+- Atualização de quantidade de itens existentes (`POST /cart/add_item`)
+- Remoção de itens do carrinho (`DELETE /cart/:product_id`)
+- Marcação automática de carrinhos como abandonados após 3 horas de inatividade
+- Remoção de carrinhos abandonados há mais de 7 dias
+- Dockerização completa do ambiente com `docker-compose`
 
 ## Dependências
 
   
 
-*  **Ruby**: 3.3.1
-
-*  **Rails**: 7.1.3.2
-
-*  **PostgreSQL**: 16
-
-*  **Redis**: 7.0.15
-
-*  **Sidekiq**: ~> 7.2.4
-
-*  **Sidekiq-Scheduler**: ~> 5.0.3
+-   Ruby 3.3.1
+    
+-   Rails 7.1.3.2
+    
+-   PostgreSQL 16
+    
+-   Redis 7.0.15
+    
+-   Sidekiq
+    
+-   RSpec + FactoryBot
+    
+-   Docker + Docker Compose
 
   
 
