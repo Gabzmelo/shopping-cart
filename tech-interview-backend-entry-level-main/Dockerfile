@@ -1,6 +1,6 @@
 # syntax = docker/dockerfile:1
 
-ARG RUBY_VERSION=3.3.3
+ARG RUBY_VERSION=3.3.1
 FROM ruby:${RUBY_VERSION}-slim as build
 
 WORKDIR /rails
@@ -22,7 +22,7 @@ COPY . .
 RUN bundle exec bootsnap precompile app/ lib/
 
 # Final stage
-FROM ruby:3.3.3-slim
+FROM ruby:3.3.1-slim
 
 WORKDIR /rails
 
